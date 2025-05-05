@@ -7,6 +7,7 @@ import akka.stream.{ActorAttributes, Materializer}
 import akka.util.ByteString
 import followers.model.{Event, Followers, Identity}
 
+import scala.annotation.tailrec
 import scala.collection.immutable.SortedSet
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
@@ -31,7 +32,7 @@ object Server extends ServerModuleInterface {
     * Hint: you may find the [[Framing]] flows useful.
     */
   val reframedFlow: Flow[ByteString, String, NotUsed] =
-    unimplementedFlow
+    Framing.delimiter(ByteString.fromString("\n"), 1000).map(_.utf8String)
 
   /**
     * A flow that consumes chunks of bytes and produces [[Event]] messages.
@@ -44,7 +45,7 @@ object Server extends ServerModuleInterface {
     * Hint: reuse `reframedFlow`
     */
   val eventParserFlow: Flow[ByteString, Event, NotUsed] =
-    unimplementedFlow
+    reframedFlow.map(str => Event.parse(str))
 
   /**
     * Implement a Sink that will look for the first [[Identity]]
@@ -57,7 +58,7 @@ object Server extends ServerModuleInterface {
     * (and have a look at `Keep.right`).
     */
   val identityParserSink: Sink[ByteString, Future[Identity]] =
-    unimplementedSink
+    reframedFlow.map(str => Identity.parse(str)).toMat(Sink.head)(Keep.right)
 
   /**
     * A flow that consumes unordered messages and produces messages ordered by `sequenceNr`.
@@ -72,7 +73,39 @@ object Server extends ServerModuleInterface {
     * operation around in the operator.
     */
   val reintroduceOrdering: Flow[Event, Event, NotUsed] =
-    unimplementedFlow
+    Flow.apply.statefulMapConcat { () =>
+      var sequenceNr = 1
+      var buff = Map.empty[Int, Event]
+
+      @tailrec
+      def loop(seqNr: Int, acc: List[Event]): List[Event] = {
+        if (buff.isEmpty) acc
+        else {
+          buff.get(seqNr) match {
+            case Some(value) =>
+              sequenceNr += 1
+              buff = buff - value.sequenceNr
+              loop(seqNr, acc :+ value)
+            case None => Nil
+          }
+        }
+      }
+
+      element => {
+        if (element.sequenceNr == sequenceNr) {
+          sequenceNr += 1
+          List(element) ++ loop(sequenceNr, Nil)
+        } else if (element.sequenceNr > sequenceNr) {
+          buff = buff + (element.sequenceNr -> element)
+          Nil
+        } else {
+          buff.get(element.sequenceNr) match {
+            case Some(value) => List(value)
+            case None => Nil
+          }
+        }
+      }
+    }
 
   /**
     * A flow that associates a state of [[Followers]] to
