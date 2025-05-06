@@ -119,20 +119,17 @@ object Server extends ServerModuleInterface {
   val followersFlow: Flow[Event, (Event, Followers), NotUsed] = {
     Flow[Event].statefulMapConcat { () =>
       var followers = Map.empty[Int, Set[Int]]
-      var state = Map.empty[Event, Followers]
       element => {
         element match {
           case e@Event.Follow(_, fromUserId, toUserId) =>
             val toUsersOpt = followers.get(fromUserId).toSet.flatten
             followers = followers.updated(fromUserId, toUsersOpt + toUserId)
-            state = state.updated(e, followers)
             Map(e -> followers)
           case e@Event.Unfollow(_, fromUserId, toUserId) =>
             val toUsersOpt = followers.get(fromUserId).toSet.flatten
             followers = followers.updated(fromUserId, toUsersOpt - toUserId)
-            state = state.updated(e, followers)
             Map(e -> followers)
-          case _ => state
+          case e => Map(e -> followers)
         }
       }
     }
