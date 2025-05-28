@@ -79,6 +79,23 @@ class FollowersSuite extends munit.FunSuite with TestKitBase {
     assertEquals(got, incoming.sortBy(_.sequenceNr))
   }
 
+  test("reintroduceOrdering: reintroduce unordering, 2 off (3pts)") {
+    val incoming = List(
+      Event.Follow(1, 1, 3),
+      Event.Follow(5, 1, 3),
+      Event.Follow(8, 1, 3),
+      Event.Follow(3, 1, 3),
+      Event.Follow(2, 1, 3),
+      Event.Follow(4, 1, 3),
+      Event.Follow(7, 1, 3),
+      Event.Follow(6, 1, 3),
+    )
+
+    val sorted = Source(incoming) via reintroduceOrdering
+    val got = await(sorted.runWith(Sink.seq))
+    assertEquals(got, incoming.sortBy(_.sequenceNr))
+  }
+
 
   test("followersFlow: add a follower (3pts)") {
     val got = await(

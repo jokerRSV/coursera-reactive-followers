@@ -79,14 +79,14 @@ object Server extends ServerModuleInterface {
       var buff = Map.empty[Int, Event]
 
       @tailrec
-      def loop(seqNr: Int, acc: List[Event]): List[Event] = {
-        if (buff.isEmpty) acc
+      def loop(acc: List[Event]): List[Event] = {
+        if (!buff.values.exists(e => e.sequenceNr == sequenceNr)) acc
         else {
-          buff.get(seqNr) match {
+          buff.get(sequenceNr) match {
             case Some(value) =>
               sequenceNr += 1
               buff = buff - value.sequenceNr
-              loop(seqNr, acc :+ value)
+              loop(acc :+ value)
             case None => Nil
           }
         }
@@ -95,7 +95,7 @@ object Server extends ServerModuleInterface {
       element => {
         if (element.sequenceNr == sequenceNr) {
           sequenceNr += 1
-          List(element) ++ loop(sequenceNr, Nil)
+          List(element) ++ loop(Nil)
         } else if (element.sequenceNr > sequenceNr) {
           buff = buff + (element.sequenceNr -> element)
           Nil
